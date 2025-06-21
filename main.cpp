@@ -4,6 +4,7 @@
 
 #include <vector>
 #include <cmath>
+#include <random>
 
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red   = TGAColor(255, 0,   0,   255);
@@ -11,6 +12,24 @@ const TGAColor red   = TGAColor(255, 0,   0,   255);
 Model *model = NULL;
 const int width  = 800;
 const int height = 800;
+
+TGAColor RandomColor() {
+    srand(int(time(0)));
+    return TGAColor(rand()%256, rand()%256, rand()%256, rand()%256);
+}
+
+Vec3f barycentric(Vec3f A, Vec3f B, Vec3f C, Vec3f P) {
+    Vec3f s[2];
+    for (int i=2; i--; ) {
+        s[i][0] = C[i]-A[i];
+        s[i][1] = B[i]-A[i];
+        s[i][2] = A[i]-P[i];
+    }
+    Vec3f u = cross(s[0], s[1]);
+    if (std::abs(u[2])>1e-2) // dont forget that u[2] is integer. If it is zero then triangle ABC is degenerate
+        return Vec3f(1.f-(u.x+u.y)/u.z, u.y/u.z, u.x/u.z);
+    return Vec3f(-1,1,1); // in this case generate negative coordinates, it will be thrown away by the rasterizator
+}
 
 void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor const &color) { 
     bool steep = false; 
@@ -49,31 +68,46 @@ void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor const &color
     }
 } 
 
-void triangle(Vec2i p1, Vec2i p2, Vec2i p3, TGAImage &image, TGAColor const &color) {
-    int l = std::min(p1.x, std::min(p2.x, p3.x));
-    int r = std::max(p1.x, std::max(p2.x, p3.x));
-    int b = std::min(p1.y, std::min(p2.y, p3.y));
-    int t = std::max(p1.y, std::max(p2.y, p3.y));
-
-    Vec2i e1 = p2 - p1;
-    Vec2i e2 = p3 - p2;
-    Vec2i e3 = p1 - p3;
-
-    Vec2i p(l,b);
-    for(; p.x<=r; p.x++){
-        p.y = b;
-        for(; p.y<=t; p.y++){
-            Vec2i ep1 = p - p1;
-            Vec2i ep2 = p - p2;
-            Vec2i ep3 = p - p3;
-            int f1 = e1^ep1;
-            int f2 = e2^ep2;
-            int f3 = e3^ep3;
-            if((f1>=0&&f2>=0&&f3>=0)||(f1<=0&&f2<=0&&f3<=0)){
-                image.set(p.x, p.y, color);
+void triangle(Vec3f *pts, float *zbuffer, TGAImage &image, TGAColor color) {
+    Vec2f bboxmin( std::numeric_limits<float>::max(),  std::numeric_limits<float>::max());
+    Vec2f bboxmax(-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max());
+    Vec2f clamp(image.get_width()-1, image.get_height()-1);
+    for (int i=0; i<3; i++) {
+        for (int j=0; j<2; j++) {
+            bboxmin[j] = std::max(0.f,      std::min(bboxmin[j], pts[i][j]));
+            bboxmax[j] = std::min(clamp[j], std::max(bboxmax[j], pts[i][j]));
+        }
+    }
+    Vec3f P;
+    for (P.x=bboxmin.x; P.x<=bboxmax.x; P.x++) {
+        for (P.y=bboxmin.y; P.y<=bboxmax.y; P.y++) {
+            Vec3f bc_screen  = barycentric(pts[0], pts[1], pts[2], P);
+            if (bc_screen.x<0 || bc_screen.y<0 || bc_screen.z<0) continue;
+            P.z = 0;
+            for (int i=0; i<3; i++) P.z += pts[i][2]*bc_screen[i];
+            if (zbuffer[int(P.x+P.y*width)]<P.z) {
+                zbuffer[int(P.x+P.y*width)] = P.z;
+                image.set(P.x, P.y, color);
             }
         }
     }
+}
+
+Vec3f world2screen(Vec3f v) {
+    return Vec3f(int((v.x+1.)*width/2.+.5), int((v.y+1.)*height/2.+.5), v.z);
+}
+
+TGAColor avg_color(TGAColor *colors) {
+    int bgra[4]={0,0,0,0};
+    // j: index of bgra
+    for(int j=0;j<4;j++){
+        // i: i th of 3 colors
+        for(int i=0;i<3;i++) {
+            bgra[j] += colors[i][j];
+        }
+        bgra[j]/=3;
+    }
+    return TGAColor(bgra[2],bgra[1],bgra[0],bgra[3]);
 }
 
 int main(int argc, char** argv) {
@@ -82,23 +116,52 @@ int main(int argc, char** argv) {
     } else {
         model = new Model("obj/african_head.obj");
     }
+    TGAImage texture_image;
+    texture_image.read_tga_file("obj/african_head_diffuse.tga");
 
-    TGAImage image(width, height, TGAImage::RGB);
-    // for (int i=0; i<model->nfaces(); i++) {
-    //     std::vector<int> face = model->face(i);
-    //     for (int j=0; j<3; j++) {
-    //         Vec3f v0 = model->vert(face[j]);
-    //         Vec3f v1 = model->vert(face[(j+1)%3]);
-    //         int x0 = (v0.x+1.)*width/2.;
-    //         int y0 = (v0.y+1.)*height/2.;
-    //         int x1 = (v1.x+1.)*width/2.;
-    //         int y1 = (v1.y+1.)*height/2.;
-    //         line(x0, y0, x1, y1, image, white);
-    //     }
+    // for(int i=0;i<model->ntexture_verts();i++){
+    //     printf("#####%f,%f,%f\n",model->texture_vert(i).x,model->texture_vert(i).y,model->texture_vert(i).z);
     // }
 
-    triangle(Vec2i(100,100),Vec2i(200,400),Vec2i(400,100), image, white);
+    TGAImage image(width, height, TGAImage::RGB);
 
+    // 画一个三角形
+    // triangle(Vec2i(100,100),Vec2i(200,400),Vec2i(400,100), image, white);
+
+
+    // 三角面渲染
+    Vec3f light_dir(0,0,-1); // define light_dir
+    light_dir.normalize();
+
+    float *zbuffer = new float[width*height]; 
+    for (int i=width*height; i--; zbuffer[i] = -std::numeric_limits<float>::max());
+
+    for (int i=0; i<model->nfaces(); i++) {
+        std::vector<int> face = model->face(i);
+        std::vector<int> texture = model->face_texture(i);
+
+        Vec3f pts[3];
+        Vec3f world_coords[3];
+        TGAColor colors[3];
+        for (int i=0; i<3; i++){
+            pts[i] = world2screen(model->vert(face[i]));
+            world_coords[i]  = model->vert(face[i]);
+            int tidx = texture[i];
+            Vec3f texture_point = model->texture_vert(tidx);
+            colors[i] = texture_image.get(int(texture_point.x*texture_image.get_width()), int(texture_point.y*texture_image.get_height()));
+        }
+        TGAColor color = avg_color(colors);
+        Vec3f n = cross((world_coords[2]-world_coords[0]),(world_coords[1]-world_coords[0])); 
+        n.normalize(); 
+        float intensity = n*light_dir;
+        if(intensity < 0)intensity = 0;
+        triangle(pts, zbuffer, image, colors[2]*intensity);
+        // triangle(pts, zbuffer, image, TGAColor(rand()%255, rand()%255, rand()%255, rand()%255));
+    }
+
+    printf("!!#!@#@!#@!%d,%d\n",texture_image.get_width(),texture_image.get_height());
+
+    // 图片输出
     image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
     image.write_tga_file("output.tga");
     delete model;
