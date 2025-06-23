@@ -69,22 +69,16 @@ void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor const &color
     }
 } 
 
-TGAColor getColor(TGAColor *colors, Vec3f const &bc){
-    int bgra[4]={0,0,0,0};
-    // j: index of bgra
-    for(int j=0;j<4;j++){
-        // i: i th of 3 points
-        for(int i=0;i<3;i++) {
-            bgra[j] += colors[i][j] * bc[i];
-        }
-        bgra[j]/=3;
-    }
-    return TGAColor(bgra[2],bgra[1],bgra[0],bgra[3]);
+TGAColor getColor(TGAImage &texture_image, Vec2f *texture_uv, Vec3f const &bc){
+    int tex_x = texture_uv[0].x * bc.x + texture_uv[1].x * bc.y + texture_uv[2].x * bc.z;
+    int tex_y = texture_uv[0].y * bc.x + texture_uv[1].y * bc.y + texture_uv[2].y * bc.z;
+    TGAColor color = texture_image.get(tex_x, tex_y);
+    return color;
 }
 
 // pts:三角形的三个顶点的屏幕坐标
 // 
-void triangle(Vec3f *pts, float *zbuffer, TGAImage &image, TGAColor *colors, float intensity) {
+void triangle(Vec3f *pts, float *zbuffer, TGAImage &image, TGAImage &texture_image, Vec2f *texture_uv, float intensity) {
     Vec2f bboxmin( std::numeric_limits<float>::max(),  std::numeric_limits<float>::max());
     Vec2f bboxmax(-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max());
     Vec2f clamp(image.get_width()-1, image.get_height()-1);
@@ -102,7 +96,7 @@ void triangle(Vec3f *pts, float *zbuffer, TGAImage &image, TGAColor *colors, flo
             P.z = 0;
             for (int i=0; i<3; i++) P.z += pts[i][2]*bc_screen[i];
             // 获取颜色
-            TGAColor color = getColor(colors,bc_screen);
+            TGAColor color = getColor(texture_image,texture_uv,bc_screen);
             // printf("intensity: %f\n",intensity);
             color = color * intensity;
             // TGAColor color = colors[2];
@@ -160,26 +154,24 @@ int main(int argc, char** argv) {
         Vec3f pts[3];
         Vec3f world_coords[3];
         TGAColor colors[3];
+        Vec2f texture_uv[3];
         for (int j=0; j<3; j++){
             pts[j] = world2screen(model->vert(face[j]));
             world_coords[j]  = model->vert(face[j]);
             int tidx = texture[j];
             Vec3f texture_point = model->texture_vert(tidx);
-            int tex_x = std::min(texture_image.get_width()-1, (int)(texture_point.x * texture_image.get_width()));
-            int tex_y = std::min(texture_image.get_height()-1, (int)(texture_point.y * texture_image.get_height()));
-            colors[j] = texture_image.get(tex_x, tex_y);
+            texture_uv[j].x = std::min(float(texture_image.get_width()-1.0), (texture_point.x * texture_image.get_width()));
+            texture_uv[j].y = std::min(float(texture_image.get_height()-1.0), (texture_point.y * texture_image.get_height()));
+            // colors[j] = texture_image.get(tex_x, tex_y);
         }
         // TGAColor color = avg_color(colors);
         Vec3f n = cross((world_coords[2]-world_coords[0]),(world_coords[1]-world_coords[0])); 
         n.normalize(); 
         float intensity = n*light_dir;
         if(intensity < 0)intensity = 0;
-        triangle(pts, zbuffer, image, colors, intensity);
+        triangle(pts, zbuffer, image, texture_image, texture_uv, intensity);
         // triangle(pts, zbuffer, image, TGAColor(rand()%255, rand()%255, rand()%255, rand()%255));
     }
-
-    printf("!!#!@#@!#@!%d,%d\n",texture_image.get_width(),texture_image.get_height());
-    printf("%f,%f,%f\n", model->texture_vert(1337).x,model->texture_vert(1337).y,model->texture_vert(1337).z);
 
     // 图片输出
     image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
