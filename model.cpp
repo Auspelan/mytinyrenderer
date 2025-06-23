@@ -26,6 +26,7 @@ Model::Model(const char *filename) : verts_(), faces_(), faces_texture_(), textu
             iss >> trash;
             while (iss >> idx >> trash >> tidx >> trash >> itrash) {
                 idx--; // in wavefront obj all indices start at 1, not zero
+                tidx--;
                 f.push_back(idx);
                 ft.push_back(tidx);
             }
@@ -35,7 +36,8 @@ Model::Model(const char *filename) : verts_(), faces_(), faces_texture_(), textu
             iss >> trash >> trash;
             Vec3f vt;
             for (int i=0;i<3;i++) iss >> vt[i];
-            // printf("????%f,%f,%f\n",vt[1],vt[1],vt[1]);
+            // 图片坐标原点在左上角，需要转换为左下角
+            vt[1] = 1 - vt[1];
             texture_verts_.push_back(vt);
         }
         
