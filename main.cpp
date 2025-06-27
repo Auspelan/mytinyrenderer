@@ -152,15 +152,14 @@ int main(int argc, char** argv) {
     float *zbuffer = new float[width*height]; 
     for (int i=width*height; i--; zbuffer[i] = -std::numeric_limits<float>::max());
 
-    for (int i=0; i<model->nfaces(); i++) {
-        std::vector<int> face = model->face(i);
-        std::vector<int> texture = model->face_texture(i);
-        std::vector<int> normal = model->face_normal(i);
+    for (int i=0; i<model->nfaces(); i++) { // 每个循环处理一个三角面
+        std::vector<int> face = model->face(i);             // 三个顶点的索引
+        std::vector<int> texture = model->face_texture(i);  // 三个顶点的纹理索引
+        std::vector<int> normal = model->face_normal(i);    // 三个顶点的法向量索引
 
-        Vec3f pts[3];
-        Vec3f world_coords[3];
-        TGAColor colors[3];
-        Vec2f texture_uv[3];
+        Vec3f pts[3];           // 三个顶点的屏幕坐标
+        Vec3f world_coords[3];  // 三个顶点的世界坐标
+        Vec2f texture_uv[3];    // 三个顶点的纹理坐标
         for (int j=0; j<3; j++){
             pts[j] = world2screen(model->vert(face[j]));
             world_coords[j]  = model->vert(face[j]);
@@ -168,9 +167,7 @@ int main(int argc, char** argv) {
             Vec3f texture_point = model->texture_vert(tidx);
             texture_uv[j].x = std::min(float(texture_image.get_width()-1.0), (texture_point.x * texture_image.get_width()));
             texture_uv[j].y = std::min(float(texture_image.get_height()-1.0), (texture_point.y * texture_image.get_height()));
-            // colors[j] = texture_image.get(tex_x, tex_y);
         }
-        // TGAColor color = avg_color(colors);
         // 计算三个顶点的光照强度
         float intensities[3];
         for(int j=0;j<3;j++){
@@ -180,7 +177,6 @@ int main(int argc, char** argv) {
             if(intensities[j] < 0)intensities[j] = 0;
         }
         triangle(pts, zbuffer, image, texture_image, texture_uv, intensities);
-        // triangle(pts, zbuffer, image, TGAColor(rand()%255, rand()%255, rand()%255, rand()%255));
     }
 
     // 图片输出
