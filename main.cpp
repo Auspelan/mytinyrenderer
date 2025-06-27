@@ -138,17 +138,13 @@ int main(int argc, char** argv) {
     TGAImage texture_image;
     texture_image.read_tga_file("obj/african_head_diffuse.tga");
 
-    // for(int i=0;i<model->ntexture_verts();i++){
-    //     printf("#####%f,%f,%f\n",model->texture_vert(i).x,model->texture_vert(i).y,model->texture_vert(i).z);
-    // }
-
     TGAImage image(width, height, TGAImage::RGB);
 
-    // 三角面渲染
     // 定义方向光光源
     Vec3f light_dir(0,-1,-1); 
     light_dir.normalize();
-
+    
+    // 三角面渲染
     float *zbuffer = new float[width*height]; 
     for (int i=width*height; i--; zbuffer[i] = -std::numeric_limits<float>::max());
 
@@ -160,6 +156,7 @@ int main(int argc, char** argv) {
         Vec3f pts[3];           // 三个顶点的屏幕坐标
         Vec3f world_coords[3];  // 三个顶点的世界坐标
         Vec2f texture_uv[3];    // 三个顶点的纹理坐标
+        // 获取纹理坐标
         for (int j=0; j<3; j++){
             pts[j] = world2screen(model->vert(face[j]));
             world_coords[j]  = model->vert(face[j]);
