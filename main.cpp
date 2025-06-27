@@ -6,12 +6,11 @@
 #include <cmath>
 #include <random>
 
-const TGAColor white = TGAColor(255, 255, 255, 255);
-const TGAColor red   = TGAColor(255, 0,   0,   255);
 
 Model *model = NULL;
 const int width  = 800;
 const int height = 800;
+const int depth  = 255;
 
 TGAColor RandomColor() {
     srand(int(time(0)));
@@ -32,6 +31,7 @@ Vec3f barycentric(Vec3f A, Vec3f B, Vec3f C, Vec3f P) {
     return Vec3f(-1,1,1); // in this case generate negative coordinates, it will be thrown away by the rasterizator
 }
 
+// 在屏幕坐标(x0,y0)到(x1,y1)之间画线
 void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor const &color) { 
     bool steep = false; 
     if (std::abs(x0-x1)<std::abs(y0-y1)) { 
@@ -77,8 +77,10 @@ TGAColor getColor(TGAImage &texture_image, Vec2f *texture_uv, Vec3f const &bc){
 }
 
 // pts:三角形的三个顶点的屏幕坐标
-// 
-void triangle(Vec3f *pts, float *zbuffer, TGAImage &image, TGAImage &texture_image, Vec2f *texture_uv, float intensity) {
+// zbuffer:深度缓存
+// texture_uv[3]:三角形的三个顶点的纹理坐标
+// intensities[3]:三角形的三个顶点的光照强度
+void triangle(Vec3f *pts, float *zbuffer, TGAImage &image, TGAImage &texture_image, Vec2f *texture_uv, float *intensities) {
     Vec2f bboxmin( std::numeric_limits<float>::max(),  std::numeric_limits<float>::max());
     Vec2f bboxmax(-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max());
     Vec2f clamp(image.get_width()-1, image.get_height()-1);
@@ -98,6 +100,7 @@ void triangle(Vec3f *pts, float *zbuffer, TGAImage &image, TGAImage &texture_ima
             // 获取颜色
             TGAColor color = getColor(texture_image,texture_uv,bc_screen);
             // printf("intensity: %f\n",intensity);
+            float intensity = intensities[0] * bc_screen.x + intensities[1] * bc_screen.y + intensities[2] * bc_screen.z;
             color = color * intensity;
             // TGAColor color = colors[2];
             if (zbuffer[int(P.x+P.y*width)]<P.z) {
@@ -108,6 +111,7 @@ void triangle(Vec3f *pts, float *zbuffer, TGAImage &image, TGAImage &texture_ima
     }
 }
 
+// 世界坐标转换为屏幕坐标
 Vec3f world2screen(Vec3f v) {
     return Vec3f(int((v.x+1.)*width/2.+.5), int((v.y+1.)*height/2.+.5), v.z);
 }
@@ -141,7 +145,8 @@ int main(int argc, char** argv) {
     TGAImage image(width, height, TGAImage::RGB);
 
     // 三角面渲染
-    Vec3f light_dir(0,0,-1); // define light_dir
+    // 定义方向光光源
+    Vec3f light_dir(0,-1,-1); 
     light_dir.normalize();
 
     float *zbuffer = new float[width*height]; 
@@ -150,6 +155,7 @@ int main(int argc, char** argv) {
     for (int i=0; i<model->nfaces(); i++) {
         std::vector<int> face = model->face(i);
         std::vector<int> texture = model->face_texture(i);
+        std::vector<int> normal = model->face_normal(i);
 
         Vec3f pts[3];
         Vec3f world_coords[3];
@@ -165,11 +171,15 @@ int main(int argc, char** argv) {
             // colors[j] = texture_image.get(tex_x, tex_y);
         }
         // TGAColor color = avg_color(colors);
-        Vec3f n = cross((world_coords[2]-world_coords[0]),(world_coords[1]-world_coords[0])); 
-        n.normalize(); 
-        float intensity = n*light_dir;
-        if(intensity < 0)intensity = 0;
-        triangle(pts, zbuffer, image, texture_image, texture_uv, intensity);
+        // 计算三个顶点的光照强度
+        float intensities[3];
+        for(int j=0;j<3;j++){
+            Vec3f n = model->normal_vector(normal[j]);
+            n.normalize();
+            intensities[j] = -(n*light_dir); // 法向量与光照强度的点积取相反数为光照强度
+            if(intensities[j] < 0)intensities[j] = 0;
+        }
+        triangle(pts, zbuffer, image, texture_image, texture_uv, intensities);
         // triangle(pts, zbuffer, image, TGAColor(rand()%255, rand()%255, rand()%255, rand()%255));
     }
 
