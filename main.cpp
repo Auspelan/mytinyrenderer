@@ -178,10 +178,24 @@ int main(int argc, char** argv) {
         }
         triangle(pts, zbuffer, image, texture_image, texture_uv, intensities);
     }
-
     // 图片输出
     image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
     image.write_tga_file("output.tga");
+
+    // dump z-buffer (debugging purposes only)
+    // { 
+    //     TGAImage zbimage(width, height, TGAImage::GRAYSCALE);
+    //     for (int i=0; i<width; i++) {
+    //         for (int j=0; j<height; j++) {
+    //             zbimage.set(i, j, TGAColor((unsigned char)((zbuffer[i+j*width] +1 )/2*255)));
+    //             if(zbuffer[i+j*width] != -std::numeric_limits<float>::max())
+    //                 std::cout<<((zbuffer[i+j*width] /2.0 + 1)*255)<<std::endl;
+    //         }
+    //     }
+    //     zbimage.flip_vertically(); // i want to have the origin at the left bottom corner of the image
+    //     zbimage.write_tga_file("zbuffer.tga");
+    // }
+
     delete model;
 	std::cout<<"图片成功生成！"<<std::endl;
 	return 0;
