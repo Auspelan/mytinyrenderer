@@ -90,6 +90,7 @@ std::vector<int> Model::face_normal(int idx)
 }
 
 Vec3f Model::vert(int i) {
+    // printf("###获取顶点信息: %d\n",i);
     return verts_[i];
 }
 
